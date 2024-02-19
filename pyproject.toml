@@ -5,9 +5,28 @@ build-backend = "flit_core.buildapi"
 [project]
 name = "matterbot"
 dynamic = ["description", "version"]
+requires-python = ">=3.10"
+authors = [
+    { name = "Ian Neal", email = "wopr@wopr.tech" },
+]
 dependencies = [
     "fastapi >=0.109.2,<1",
     "pydantic >=2.1,<3",
     "pydantic-extra-types >=2.0",
     "uplink >=0.9.7,<1",
+]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Framework :: FastAPI",
+    "Framework :: Pydantic",
+    "Framework :: Pydantic :: 2",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Information Technology",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Communications",
+    "Topic :: Communications :: Chat",
+    "Typing :: Typed"
 ]
