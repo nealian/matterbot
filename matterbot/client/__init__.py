@@ -15,10 +15,10 @@ class MattermostClient(uplink.Consumer):
     ):
         pass
 
-    @uplink.post('{response_url}')
+    @uplink.post
     def slash_command_delayed_response(
         self,
-        response_url: uplink.Path(type=str),  # type: ignore
+        response_url: uplink.Url,
         body: uplink.Body(type=SlashWebhookResponseBody),  # type: ignore
     ):
         pass
