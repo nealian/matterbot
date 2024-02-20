@@ -6,6 +6,7 @@ from matterbot.models.attachments import MessageAttachment
 
 
 class IncomingWebhookBody(BaseModel, validate_assignment=True):
+    """https://developers.mattermost.com/integrate/webhooks/incoming/#parameters"""
     text: Optional[str] = None
     channel: Optional[str] = None
     username: Optional[str] = None

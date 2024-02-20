@@ -673,7 +673,7 @@ class MatterbotServer:
           and timestamp as datetime.datetime.
 
         Adds a new FastAPI *path operation* using an HTTP GET or POST (default) operation, depending on the method selected.
-        Uses the Outgoing model to validate the response type.
+        Uses the Slash model to validate the response type.
 
         Effectively a wrapper around fastapi.APIRouter.get / .post with MM integration token validation.
 
@@ -688,7 +688,7 @@ class MatterbotServer:
 
         echo_mm_token = "abcdefg"
 
-        @server.outgoing("/echo", token=echo_mm_token)
+        @server.slash("/echo", token=echo_mm_token)
         def echo(request) -> dict:
             echo_icon = "https://m.media-amazon.com/images/I/41U7UzQyiJL._AC_SL1000_.jpg"  # Amazon Echo Dot (5th gen), Deep Sea Blue
             return {
@@ -702,8 +702,10 @@ class MatterbotServer:
         ```
         """
 
+        # TODO: Figure out how to do delayed responses.
+
         @functools.wraps(callable)
-        def handler(request: OutgoingWebhookBody, *args, **kwargs):
+        def handler(request: SlashWebhookBody, *args, **kwargs):
             if request.token != token:
                 raise fastapi.HTTPException(status_code=401, detail="Unauthorized: provided token did not match")
             return callable(*args, request=request, **kwargs)
@@ -711,7 +713,7 @@ class MatterbotServer:
         return self.router.api_route(
             handler,
             path=path,
-            response_model=Outgoing,
+            response_model=Slash,
             status_code=status_code,
             tags=tags,
             dependencies=dependencies,

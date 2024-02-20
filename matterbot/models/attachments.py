@@ -7,6 +7,7 @@ from matterbot.models.actions import MessageAction
 
 
 class MessageAttachmentField(BaseModel):
+    """https://developers.mattermost.com/integrate/reference/message-attachments/#fields"""
     title: str
     value: str
     short: Optional[bool] = None

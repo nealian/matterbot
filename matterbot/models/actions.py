@@ -34,6 +34,7 @@ class MessageActionDataSource(StrEnum):
 
 
 class MessageAction(BaseModel):
+    """https://developers.mattermost.com/integrate/plugins/interactive-messages/"""
     id: str
     name: str
     style: Optional[MessageActionStyle] = None

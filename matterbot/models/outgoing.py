@@ -14,6 +14,7 @@ class OutgoingWebhookResponseType(StrEnum):
 
 
 class OutgoingWebhookBody(BaseModel):
+    """https://developers.mattermost.com/integrate/webhooks/outgoing/#use-an-outgoing-webhook"""
     channel_id: str
     channel_name: str
     team_domain: str
@@ -28,6 +29,7 @@ class OutgoingWebhookBody(BaseModel):
 
 
 class OutgoingWebhookResponseBody(BaseModel, validate_assignment=True):
+    """https://developers.mattermost.com/integrate/webhooks/outgoing/#parameters"""
     text: Optional[str] = None
     response_type: Optional[OutgoingWebhookResponseType] = None
     username: Optional[str] = None
