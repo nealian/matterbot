@@ -1,4 +1,5 @@
 import functools
+from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
 from typing import Annotated, Any, Callable, Literal, Optional, Sequence, Type
 
@@ -6,16 +7,16 @@ import fastapi
 import starlette
 from typing_extensions import Dict, Doc, List, Union
 
-from matterbot.models import OutgoingWebhookBody
-from matterbot.models import OutgoingWebhookResponseBody as Outgoing
-from matterbot.models import SlashWebhookBody
-from matterbot.models import SlashWebhookResponseBody as Slash
+from matterbot.client import MattermostClient
+from matterbot.models import Outgoing, OutgoingRequest, Slash, SlashExtra, SlashRequest
 
 
 class MatterbotServer:
     def __init__(self, fastapiapp: fastapi.FastAPI) -> None:
         self.router = fastapi.APIRouter()
         self.fastapp = fastapiapp
+        self.executor = ThreadPoolExecutor()
+        self.client = MattermostClient()
 
     def __call__(self) -> None:
         self.fastapp.include_router(self.router)
@@ -344,7 +345,7 @@ class MatterbotServer:
         """
 
         @functools.wraps(callable)
-        def handler(request: OutgoingWebhookBody, *args, **kwargs):
+        def handler(request: OutgoingRequest, *args, **kwargs):
             callable(*args, request=request, **kwargs)
 
         return self.router.api_route(
@@ -375,13 +376,31 @@ class MatterbotServer:
             generate_unique_id_function=generate_unique_id_function,
         )
 
-
-    def slash(
+    def slash_delayed_response(
         self,
         callable: Callable,
         path: str,
         token: str,
         method: Literal["POST", "GET"] = "POST",
+        hooks: Annotated[
+            Optional[Callable | List[Callable]],
+            Doc(
+                """A callable (or list of up to five callables) that will return additional responses when complete
+                (time limit 30 minutes).
+
+                These will be expected to still be of the same response class as the decorated callable, and will be
+                validated against the SlashExtra response model.
+                """
+            ),
+        ] = None,
+        null_response: Annotated[
+            bool,
+            Doc(
+                """
+                When expecting to use the "response_url" of the request for delayed responses, you may wish to return an empty body.  Set this to True in this case.
+                """
+            ),
+        ] = False,
         status_code: Annotated[
             Optional[int],
             Doc(
@@ -667,10 +686,101 @@ class MatterbotServer:
             ),
         ] = fastapi.datastructures.Default(fastapi.utils.generate_unique_id),
     ) -> Callable[[fastapi.types.DecoratedCallable], fastapi.types.DecoratedCallable]:
-        """Create a new "outgoing" webhook; the callable should have a "request" named arg.  (All other callable args && kwargs are passed through to the callable.)
+        """Create a new "slash" webhook; the callable should have a "request" named arg.  (All other callable args && kwargs are passed through to the callable.)
         The request will have the following attributes:
-          channel_id, channel_name, team_domain, team_id, post_id, text, token, trigger_word, user_id, user_name as str,
-          and timestamp as datetime.datetime.
+          channel_id, channel_name, command, response_url, team_domain, team_id, text, token, trigger_id, user_id, user_name as str.
+
+        Adds a new FastAPI *path operation* using an HTTP GET or POST (default) operation, depending on the method selected.
+        Optionally uses the Slash model to validate the response type; you can use `null_response=True` in conjunction with `hooks` to send no response now and
+        send one (or more) responses later.
+
+        The callables in `hooks` should take exactly one argument (request), should expect the return value to be validated by SlashExtra,
+        and will be executed using a concurrent.futures.ThreadPoolExecutor.
+
+        Effectively a wrapper around fastapi.APIRouter.get / .post with MM integration token validation.
+
+        ## Example
+
+        ```python
+        from matterbot import MatterbotServer
+        from fastapi import FastAPI
+
+        fastapp = FastAPI()
+        server = MatterbotServer(fastapp)
+
+        echo_mm_token = "abcdefg"
+
+        @server.slash("/echo", token=echo_mm_token)
+        def echo(request) -> dict:
+            echo_icon = "https://m.media-amazon.com/images/I/41U7UzQyiJL._AC_SL1000_.jpg"  # Amazon Echo Dot (5th gen), Deep Sea Blue
+            return {
+                "text": request.text,
+                "response_type": "comment",
+                "username": "echobot",
+                "icon_url": echo_icon,
+            }
+
+        server() # Registers router && routes with the FastAPI app
+        ```
+        """
+
+        @functools.wraps(callable, updated=["__dict__", "request"])
+        def handler(request: SlashRequest, *args, **kwargs):
+            if request.token != token:
+                raise fastapi.HTTPException(
+                    status_code=401, detail="Unauthorized: provided token did not match"
+                )
+
+            def run_hook(hook: Callable):
+                url = request.response_url
+                response = hook(request)
+                self.client.slash_command_delayed_response(
+                    response_url=url, body=response
+                )
+
+            if __builtins__.callable(hooks):
+                hooks = [hooks]
+            elif hooks is not None:
+                for hook in hooks:
+                    # TODO: timeout?  https://gist.github.com/aaronchall/6331661fe0185c30a0b4
+                    self.executor.submit(run_hook, hook)
+
+            return callable(*args, request=request, **kwargs)
+
+        return self.router.api_route(
+            handler,
+            path=path,
+            response_model=None if null_response else Slash,
+            status_code=status_code,
+            tags=tags,
+            dependencies=dependencies,
+            summary=summary,
+            description=description,
+            response_description=response_description,
+            responses=responses,
+            deprecated=deprecated,
+            methods=[method],
+            operation_id=operation_id,
+            response_model_include=response_model_include,
+            response_model_exclude=response_model_exclude,
+            response_model_by_alias=response_model_by_alias,
+            response_model_exclude_unset=response_model_exclude_unset,
+            response_model_exclude_defaults=response_model_exclude_defaults,
+            response_model_exclude_none=response_model_exclude_none,
+            include_in_schema=include_in_schema,
+            response_class=response_class,
+            name=name,
+            callbacks=callbacks,
+            openapi_extra=openapi_extra,
+            generate_unique_id_function=generate_unique_id_function,
+        )
+
+    slash = functools.partialmethod(
+        slash_delayed_response, hooks=None, null_response=False
+    )
+    slash.__doc__ = """Create a new "slash" webhook; the callable should have a "request" named arg.  (All other callable args && kwargs are passed through to the callable.)
+        The request will have the following attributes:
+            channel_id, channel_name, command, response_url, team_domain, team_id, text, token, trigger_id, user_id, user_name as str.
 
         Adds a new FastAPI *path operation* using an HTTP GET or POST (default) operation, depending on the method selected.
         Uses the Slash model to validate the response type.
@@ -698,42 +808,6 @@ class MatterbotServer:
                 "icon_url": echo_icon,
             }
 
-        server()
+        server() # Registers router && routes with the FastAPI app
         ```
         """
-
-        # TODO: Figure out how to do delayed responses.
-
-        @functools.wraps(callable)
-        def handler(request: SlashWebhookBody, *args, **kwargs):
-            if request.token != token:
-                raise fastapi.HTTPException(status_code=401, detail="Unauthorized: provided token did not match")
-            return callable(*args, request=request, **kwargs)
-
-        return self.router.api_route(
-            handler,
-            path=path,
-            response_model=Slash,
-            status_code=status_code,
-            tags=tags,
-            dependencies=dependencies,
-            summary=summary,
-            description=description,
-            response_description=response_description,
-            responses=responses,
-            deprecated=deprecated,
-            methods=[method],
-            operation_id=operation_id,
-            response_model_include=response_model_include,
-            response_model_exclude=response_model_exclude,
-            response_model_by_alias=response_model_by_alias,
-            response_model_exclude_unset=response_model_exclude_unset,
-            response_model_exclude_defaults=response_model_exclude_defaults,
-            response_model_exclude_none=response_model_exclude_none,
-            include_in_schema=include_in_schema,
-            response_class=response_class,
-            name=name,
-            callbacks=callbacks,
-            openapi_extra=openapi_extra,
-            generate_unique_id_function=generate_unique_id_function,
-        )

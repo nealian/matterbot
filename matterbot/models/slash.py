@@ -8,6 +8,7 @@ from matterbot.models.attachments import MessageAttachment
 
 class SlashWebhookBody(BaseModel):
     """https://developers.mattermost.com/integrate/slash-commands/custom/ step 4"""
+
     channel_id: str
     channel_name: str
     command: str
@@ -30,6 +31,7 @@ class SlashWebhookResponseType(StrEnum):
 
 class SlashWebhookExtraResponse(BaseModel, validate_assignment=True):
     """https://developers.mattermost.com/integrate/slash-commands/custom/#response-parameters"""
+
     text: Optional[str] = None
     attachments: Optional[list[MessageAttachment]] = None
     response_type: Optional[SlashWebhookResponseType] = None
@@ -59,6 +61,7 @@ class SlashWebhookExtraResponse(BaseModel, validate_assignment=True):
 
 class SlashWebhookResponseBody(BaseModel, validate_assignment=True):
     """https://developers.mattermost.com/integrate/slash-commands/custom/#response-parameters"""
+
     text: Optional[str] = None
     attachments: Optional[list[MessageAttachment]] = None
     response_type: Optional[SlashWebhookResponseType] = None
