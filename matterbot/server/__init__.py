@@ -772,7 +772,8 @@ class MatterbotServer:
                 url = request.response_url
                 response = hook(request)
                 self.client.slash_command_delayed_response(
-                    response_url=url, body=response
+                    response_url=url,
+                    body=response,
                 )
 
             if __builtins__.callable(hooks):
