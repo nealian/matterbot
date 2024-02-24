@@ -1,5 +1,7 @@
 import functools
-from concurrent.futures import ThreadPoolExecutor
+import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor, thread
 from enum import Enum
 from typing import Annotated, Any, Callable, Literal, Optional, Sequence, Type
 
@@ -9,6 +11,39 @@ from typing_extensions import Dict, Doc, List, Union
 
 from matterbot.client import MattermostClient
 from matterbot.models import Outgoing, OutgoingRequest, Slash, SlashExtra, SlashRequest
+
+
+def _cdquit(fn_name):
+    """
+    Interrupt current thread.
+    From https://gist.github.com/aaronchall/6331661fe0185c30a0b4
+    """
+    print(f"{fn_name} took too long", file=sys.stderr, flush=True)
+    thread.interrupt_main()  # raises KeyboardInterrupt
+
+
+def _exit_after(s):
+    """
+    use as decorator to exit process if function takes longer than s seconds
+    from https://gist.github.com/aaronchall/6331661fe0185c30a0b4
+    """
+
+    def outer(fn):
+        @functools.wraps(fn)
+        def inner(*args, **kwargs):
+            timer = threading.Timer(interval=s, function=_cdquit, args=[fn.__name__])
+            timer.start()
+            try:
+                result = fn(*args, **kwargs)
+            except KeyboardInterrupt:
+                pass
+            finally:
+                timer.cancel()
+            return result
+
+        return inner
+
+    return outer
 
 
 class MatterbotServer:
@@ -731,6 +766,8 @@ class MatterbotServer:
                     status_code=401, detail="Unauthorized: provided token did not match"
                 )
 
+            # Response URL is only valid for 30 minutes, so don't run any longer than that
+            @_exit_after(60 * 30)
             def run_hook(hook: Callable):
                 url = request.response_url
                 response = hook(request)
@@ -742,7 +779,6 @@ class MatterbotServer:
                 hooks = [hooks]
             elif hooks is not None:
                 for hook in hooks:
-                    # TODO: timeout?  https://gist.github.com/aaronchall/6331661fe0185c30a0b4
                     self.executor.submit(run_hook, hook)
 
             return callable(*args, request=request, **kwargs)
