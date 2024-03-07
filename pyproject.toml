@@ -30,3 +30,8 @@ classifiers = [
     "Topic :: Communications :: Chat",
     "Typing :: Typed"
 ]
+
+[project.optional-dependencies]
+dev = [
+    "ipython",
+]

@@ -3,14 +3,25 @@ import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, thread
 from enum import Enum
-from typing import Annotated, Any, Callable, Literal, Optional, Sequence, Type
+from typing import (
+    Annotated,
+    Any,
+    Callable,
+    Dict,
+    Doc,
+    List,
+    Literal,
+    Optional,
+    Sequence,
+    Type,
+    Union,
+)
 
 import fastapi
 import starlette
-from typing_extensions import Dict, Doc, List, Union
 
 from matterbot.client import MattermostClient
-from matterbot.models import Outgoing, OutgoingRequest, Slash, SlashExtra, SlashRequest
+from matterbot.models import Outgoing, OutgoingRequest, Slash, SlashRequest
 
 
 def _cdquit(fn_name):
@@ -46,12 +57,22 @@ def _exit_after(s):
     return outer
 
 
+def _partialmethod(meth, *args, **kwargs):
+    @functools.wraps(meth)
+    def new_method(self, *args2, **kwargs2):
+        pass
+
+
 class MatterbotServer:
+    """A web server interface wrapper around a FastAPI Router, designed specifically for
+    Mattermost slash commands and "outgoing" webhooks.
+    """
+
     def __init__(self, fastapiapp: fastapi.FastAPI) -> None:
         self.router = fastapi.APIRouter()
         self.fastapp = fastapiapp
-        self.executor = ThreadPoolExecutor()
-        self.client = MattermostClient()
+        self._executor = ThreadPoolExecutor()
+        self._client = MattermostClient()
 
     def __call__(self) -> None:
         self.fastapp.include_router(self.router)
@@ -383,33 +404,37 @@ class MatterbotServer:
         def handler(request: OutgoingRequest, *args, **kwargs):
             callable(*args, request=request, **kwargs)
 
-        return self.router.api_route(
-            handler,
-            path=path,
-            response_model=Outgoing,
-            status_code=status_code,
-            tags=tags,
-            dependencies=dependencies,
-            summary=summary,
-            description=description,
-            response_description=response_description,
-            responses=responses,
-            deprecated=deprecated,
-            methods=[method],
-            operation_id=operation_id,
-            response_model_include=response_model_include,
-            response_model_exclude=response_model_exclude,
-            response_model_by_alias=response_model_by_alias,
-            response_model_exclude_unset=response_model_exclude_unset,
-            response_model_exclude_defaults=response_model_exclude_defaults,
-            response_model_exclude_none=response_model_exclude_none,
-            include_in_schema=include_in_schema,
-            response_class=response_class,
-            name=name,
-            callbacks=callbacks,
-            openapi_extra=openapi_extra,
-            generate_unique_id_function=generate_unique_id_function,
-        )
+        @functools.wraps(handler)
+        def handler2(*args, **kwargs):
+            return self.router.api_route(
+                handler,
+                path=path,
+                response_model=Outgoing,
+                status_code=status_code,
+                tags=tags,
+                dependencies=dependencies,
+                summary=summary,
+                description=description,
+                response_description=response_description,
+                responses=responses,
+                deprecated=deprecated,
+                methods=[method],
+                operation_id=operation_id,
+                response_model_include=response_model_include,
+                response_model_exclude=response_model_exclude,
+                response_model_by_alias=response_model_by_alias,
+                response_model_exclude_unset=response_model_exclude_unset,
+                response_model_exclude_defaults=response_model_exclude_defaults,
+                response_model_exclude_none=response_model_exclude_none,
+                include_in_schema=include_in_schema,
+                response_class=response_class,
+                name=name,
+                callbacks=callbacks,
+                openapi_extra=openapi_extra,
+                generate_unique_id_function=generate_unique_id_function,
+            )
+
+        return handler2
 
     def slash_delayed_response(
         self,
@@ -759,7 +784,7 @@ class MatterbotServer:
         ```
         """
 
-        @functools.wraps(callable, updated=["__dict__", "request"])
+        @functools.wraps(callable)
         def handler(request: SlashRequest, *args, **kwargs):
             if request.token != token:
                 raise fastapi.HTTPException(
@@ -771,7 +796,7 @@ class MatterbotServer:
             def run_hook(hook: Callable):
                 url = request.response_url
                 response = hook(request)
-                self.client.slash_command_delayed_response(
+                self._client.slash_command_delayed_response(
                     response_url=url,
                     body=response,
                 )
@@ -780,47 +805,53 @@ class MatterbotServer:
                 hooks = [hooks]
             elif hooks is not None:
                 for hook in hooks:
-                    self.executor.submit(run_hook, hook)
+                    self._executor.submit(run_hook, hook)
 
             return callable(*args, request=request, **kwargs)
 
-        return self.router.api_route(
-            handler,
-            path=path,
-            response_model=None if null_response else Slash,
-            status_code=status_code,
-            tags=tags,
-            dependencies=dependencies,
-            summary=summary,
-            description=description,
-            response_description=response_description,
-            responses=responses,
-            deprecated=deprecated,
-            methods=[method],
-            operation_id=operation_id,
-            response_model_include=response_model_include,
-            response_model_exclude=response_model_exclude,
-            response_model_by_alias=response_model_by_alias,
-            response_model_exclude_unset=response_model_exclude_unset,
-            response_model_exclude_defaults=response_model_exclude_defaults,
-            response_model_exclude_none=response_model_exclude_none,
-            include_in_schema=include_in_schema,
-            response_class=response_class,
-            name=name,
-            callbacks=callbacks,
-            openapi_extra=openapi_extra,
-            generate_unique_id_function=generate_unique_id_function,
-        )
+        @functools.wraps(handler)
+        def handler2(*args, **kwargs):
+            return self.router.api_route(
+                handler,
+                path=path,
+                response_model=None if null_response else Slash,
+                status_code=status_code,
+                tags=tags,
+                dependencies=dependencies,
+                summary=summary,
+                description=description,
+                response_description=response_description,
+                responses=responses,
+                deprecated=deprecated,
+                methods=[method],
+                operation_id=operation_id,
+                response_model_include=response_model_include,
+                response_model_exclude=response_model_exclude,
+                response_model_by_alias=response_model_by_alias,
+                response_model_exclude_unset=response_model_exclude_unset,
+                response_model_exclude_defaults=response_model_exclude_defaults,
+                response_model_exclude_none=response_model_exclude_none,
+                include_in_schema=include_in_schema,
+                response_class=response_class,
+                name=name,
+                callbacks=callbacks,
+                openapi_extra=openapi_extra,
+                generate_unique_id_function=generate_unique_id_function,
+            )
+        
+        return handler2
 
     slash = functools.partialmethod(
         slash_delayed_response, hooks=None, null_response=False
     )
-    slash.__doc__ = """Create a new "slash" webhook; the callable should have a "request" named arg.  (All other callable args && kwargs are passed through to the callable.)
+    slash.__doc__ = """Create a new "slash" webhook; the callable should have a "request" named arg.
+        (All other callable args && kwargs are passed through to the callable.)
         The request will have the following attributes:
-            channel_id, channel_name, command, response_url, team_domain, team_id, text, token, trigger_id, user_id, user_name as str.
+            channel_id, channel_name, command, response_url, team_domain, team_id, text, token, trigger_id, user_id,
+            user_name as str.
 
-        Adds a new FastAPI *path operation* using an HTTP GET or POST (default) operation, depending on the method selected.
-        Uses the Slash model to validate the response type.
+        Adds a new FastAPI *path operation* using an HTTP GET or POST (default) operation,
+        depending on the method selected.  Uses the Slash model to validate the response type.
 
         Effectively a wrapper around fastapi.APIRouter.get / .post with MM integration token validation.
 
